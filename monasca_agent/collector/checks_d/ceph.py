@@ -42,6 +42,7 @@ _DEGRADED_OBJECTS_REGEX = re.compile(
     r'recovery ([\d]+)/([\d]+) objects degraded')
 _MISPLACED_OBJECTS_REGEX = re.compile(
     r'recovery ([\d]+)/([\d]+) objects misplaced')
+_CEPH_VERSION_REGEX = re.compile(r'^ceph version (\d+(\.\d)+)')
 
 
 class Ceph(checks.AgentCheck):
@@ -51,6 +52,10 @@ class Ceph(checks.AgentCheck):
         self.CLUSTER = instance.get('cluster_name', 'ceph')
         self.dimensions = self._set_dimensions({'ceph_cluster': self.CLUSTER,
                                                 'service': 'ceph'}, instance)
+        match_version = re.search(
+                            _CEPH_VERSION_REGEX,
+                            self._ceph_cmd('version'))
+        self.preluminous = match_version.group(1).split('.') < ['12','2','0']
 
         self._collect_usage_metrics()
         self._collect_stats_metrics()
@@ -359,10 +364,16 @@ class Ceph(checks.AgentCheck):
         """
         metrics = {}
         ceph_status_health = ceph_status['health']
-        metrics['ceph.cluster.health_status'] = self._parse_ceph_status(
-            ceph_status_health['overall_status'])
+        
+        if self.preluminous:
+            health_key = 'overall_status'
+        else:
+            health_key = 'status'
 
-        for s in ceph_status_health['summary']:
+        metrics['ceph.cluster.health_status'] = self._parse_ceph_status(
+            ceph_status_health[health_key])
+
+        for s in ceph_status_health.get('summary', []):
             metrics.update(self._get_summary_metrics(s['summary']))
 
         osds = ceph_status['osdmap']['osdmap']
@@ -416,8 +427,8 @@ class Ceph(checks.AgentCheck):
         {'monitor1': {metric1': value1, ...}, 'monitor2': {metric1': value1}}
         """
         mon_metrics = {}
-        for health_service in ceph_status['health']['health'][
-                'health_services']:
+        for health_service in ceph_status.get('health').get('health', {}).get(
+                'health_services', []):
             for mon in health_service['mons']:
                 store_stats = mon['store_stats']
                 mon_metrics[mon['name'].encode('ascii', 'ignore')] = {
