@@ -120,6 +120,7 @@ class Ceph(checks.AgentCheck):
             pool_dimensions['pool'] = pool
             for metric, value in metrics.iteritems():
                 self.gauge(metric, value, dimensions=pool_dimensions)
+                self.rate('{0}_per_sec'.format(metric), value, dimensions=pool_dimensions)
         self.gauge('ceph.pools.count', len(pool_metrics_dict.keys()),
                    dimensions=self.dimensions)
 
