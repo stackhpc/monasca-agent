@@ -52,10 +52,18 @@ class Ceph(checks.AgentCheck):
         self.CLUSTER = instance.get('cluster_name', 'ceph')
         self.dimensions = self._set_dimensions({'ceph_cluster': self.CLUSTER,
                                                 'service': 'ceph'}, instance)
-        match_version = re.search(
-                            _CEPH_VERSION_REGEX,
-                            self._ceph_cmd('version'))
-        self.preluminous = match_version.group(1).split('.') < ['12','2','0']
+
+        # A user can avoid executing one of the Ceph commands on every poll
+        # by supplying a version ID in the instance configuration
+        if 'version' not in instance:
+            match_version = re.search(
+                                _CEPH_VERSION_REGEX,
+                                self._ceph_cmd('--version')).group(1).split('.')
+        else:
+            match_version = instance['version']
+        self.preluminous = match_version < ['12', '2', '0']
+        self.log.debug("Detected Ceph version {} (pre-luminous: {})".format(
+                                match_version, self.preluminous))
 
         self._collect_usage_metrics()
         self._collect_stats_metrics()
